@@ -1,6 +1,22 @@
 Assignment 3
 ===================================
 
+# How to run?
+
+```
+## Q1
+python main.py --config-name=box device=cuda:0
+
+## Q2
+python main.py --config-name=train_box device=cuda:0
+
+## Q3
+python main.py --config-name=nerf_lego device=cuda:0
+
+## Q4.3
+python main.py --config-name=nerf_lego_highres device=cuda:0
+```
+
 ##  0. Setup
 
 ### 0.1 Environment setup

@@ -12,7 +12,7 @@ training:
   lr_scheduler_step_size: 50
   lr_scheduler_gamma: 0.8
 
-  checkpoint_path: ./checkpoints_highres_128
+  checkpoint_path: ./checkpoints_highres_256
   checkpoint_interval: 50
   resume: True
 
@@ -29,7 +29,7 @@ renderer:
 
 sampler:
   type: stratified
-  n_pts_per_ray: 128 # tuned this ?
+  n_pts_per_ray: 256 # tuned this ?
 
   min_depth: 2.0
   max_depth: 6.0
@@ -45,4 +45,4 @@ implicit_function:
   n_layers_xyz: 6
   append_xyz: [3]
 
-save: highres_128
+save: highres_256

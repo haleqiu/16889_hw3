@@ -2,6 +2,8 @@ seed: 1
 
 type: render
 
+device: cuda:0
+
 data:
   image_size: [256, 256]
 
@@ -41,4 +43,3 @@ implicit_function:
   beta:
     val: 0.05
     opt: False
-

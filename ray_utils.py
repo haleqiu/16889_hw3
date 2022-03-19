@@ -4,6 +4,7 @@ from typing import List, NamedTuple
 import torch
 import torch.nn.functional as F
 from pytorch3d.renderer.cameras import CamerasBase
+import numpy as np
 
 
 # Convenience class wrapping several ray inputs:
@@ -89,10 +90,10 @@ def get_pixels_from_image(image_size, camera):
     W, H = image_size[0], image_size[1]
 
     # TODO (1.3): Generate pixel coordinates from [0, W] in x and [0, H] in y
-    pass
-
     # TODO (1.3): Convert to the range [-1, 1] in both x and y
-    pass
+
+    x = torch.linspace(-1, 1, W, dtype=torch.float32)
+    y = torch.linspace(-1, 1, H, dtype=torch.float32)
 
     # Create grid of coordinates
     xy_grid = torch.stack(
@@ -108,8 +109,8 @@ def get_random_pixels_from_image(n_pixels, image_size, camera):
     xy_grid = get_pixels_from_image(image_size, camera)
     
     # TODO (2.1): Random subsampling of pixel coordinates
-    pass
-
+    index = np.random.choice(xy_grid.shape[0],n_pixels)
+    xy_grid_sub = xy_grid[index]
     # Return
     return xy_grid_sub.reshape(-1, 2)[:n_pixels]
 
@@ -119,9 +120,9 @@ def get_rays_from_pixels(xy_grid, image_size, camera):
     W, H = image_size[0], image_size[1]
 
     # TODO (1.3): Map pixels to points on the image plane at Z=1
-    pass
+    ndc_points = xy_grid
 
-    ndc_points = torch.cat(
+    ndc_points_1 = torch.cat(
         [
             ndc_points,
             torch.ones_like(ndc_points[..., -1:])
@@ -129,19 +130,20 @@ def get_rays_from_pixels(xy_grid, image_size, camera):
         dim=-1
     )
 
+    # ndc_points_0 = torch.cat(
+    #     [
+    #         ndc_points,
+    #         torch.zeros_like(ndc_points[..., -1:])
+    #     ],
+    #     dim=-1
+    # )
+
     # TODO (1.3): Use camera.unproject to get world space points on the image plane from NDC space points
-    pass
+    unprojected_1_world = camera.unproject_points(ndc_points_1, from_ndc=True)
+    # unprojected_0_world = camera.unproject_points(ndc_points_0, from_ndc=True)
 
     # TODO (1.3): Get ray origins from camera center
-    pass
+    # rays_o = unprojected_0_world
+    rays_o = camera.get_camera_center().expand(ndc_points_1.shape[0],-1)
 
-    # TODO (1.3): Get normalized ray directions
-    pass
-
-    # Create and return RayBundle
-    return RayBundle(
-        rays_o,
-        rays_d,
-        torch.zeros_like(rays_o).unsqueeze(1),
-        torch.zeros_like(rays_o).unsqueeze(1),
-    )
+    # TODO (1.3): Get normalized ray dir

@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 from ray_utils import RayBundle
 
@@ -95,7 +96,7 @@ class SDFVolume(torch.nn.Module):
         ) * self.alpha
 
     def forward(self, ray_bundle):
-        sample_points = ray_bundle.sample_points.view(-1, 3)
+        sample_points = ray_bundle.sample_points
         depth_values = ray_bundle.sample_lengths[..., 0]
         deltas = torch.cat(
             (
@@ -218,6 +219,56 @@ class MLPWithInputSkips(torch.nn.Module):
         return y
 
 
+from torch.nn import Parameter, init
+
+
+class LinearWithRepeat(torch.nn.Module):
+    """
+    reference the pytorch3d project nerf
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        device=None,
+        dtype=None,
+    ) -> None:
+        """
+        Copied from torch.nn.Linear.
+        """
+        factory_kwargs = {"device": device, "dtype": dtype}
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = Parameter(
+            torch.empty((out_features, in_features), **factory_kwargs)
+        )
+        if bias:
+            self.bias = Parameter(torch.empty(out_features, **factory_kwargs))
+        else:
+            self.register_parameter("bias", None)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        """
+        Copied from torch.nn.Linear.
+        """
+        init.kaiming_uniform_(self.weight, a=np.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
+            init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, input):
+        n1 = input[0].shape[-1]
+        output1 = F.linear(input[0], self.weight[:, :n1], self.bias)
+        output2 = F.linear(input[1], self.weight[:, n1:], None)
+        return output1 + output2.unsqueeze(-2)
+
+
+
 # TODO (3.1): Implement NeRF MLP
 class NeuralRadianceField(torch.nn.Module):
     def __init__(
@@ -232,8 +283,57 @@ class NeuralRadianceField(torch.nn.Module):
         embedding_dim_xyz = self.harmonic_embedding_xyz.output_dim
         embedding_dim_dir = self.harmonic_embedding_dir.output_dim
 
-        pass
+        n_layers = cfg.n_layers_xyz
+        input_dim = cfg.n_hidden_neurons_xyz
+        hidden_dim = input_dim
+        skip_dim = embedding_dim_xyz
+        append_xyz = cfg.append_xyz
+        hidden_dir_dim = cfg.n_hidden_neurons_dir
 
+        self.mlp = MLPWithInputSkips(
+            n_layers,
+            embedding_dim_xyz,
+            input_dim,
+            skip_dim,
+            hidden_dim,
+            input_skips=append_xyz,
+        )
+
+        self.density_layer = torch.nn.Linear(hidden_dim, 1)
+        self.density_layer.bias.data[:] = 0.0
+
+        self.color_layer_1 = torch.nn.Linear(hidden_dim, hidden_dim)
+        
+        self.color_layer_2 = torch.nn.Sequential(
+            LinearWithRepeat(hidden_dim + embedding_dim_dir, hidden_dir_dim),
+            torch.nn.ReLU(True),
+            torch.nn.Linear(hidden_dir_dim, 3),
+            torch.nn.Sigmoid(),
+        )
+        print(self.mlp)
+
+    def get_colors(self, features, rays_directions):
+        rays_directions_normed = rays_directions
+
+        intermedia = self.color_layer_1(features)
+        rays_embedding = self.harmonic_embedding_dir(rays_directions_normed)
+
+        return self.color_layer_2((intermedia, rays_embedding))
+
+    def get_densities(self, features):s
+        return torch.relu(self.density_layer(features))
+
+
+    def forward(self, ray_bundle: RayBundle):
+        embeds_xyz = self.harmonic_embedding_xyz(ray_bundle.sample_points)
+        features = self.mlp(embeds_xyz, embeds_xyz)
+        colors = self.get_colors(features, ray_bundle.directions)
+
+        densities = self.get_densities(features)
+        # densities = torch.relu(self.density_layer(features))
+        
+        out = {'density':densities, 'feature':colors}
+        return out
 
 volume_dict = {
     'sdf_volume': SDFVolume,
